@@ -6,27 +6,31 @@
 
 // reference: http://www.cnblogs.com/lsjwq/archive/2011/05/15/2046716.html
 
-int XV_Convert(char* src_file) {
-    char *fb, peek[5];
-    int mn, type, l, rl, c, fail;
-    char *ts=NULL;
-    char *video_type[7] = {"rmvb", "wmv", "flv", "avi", "mp4", "mpg", "mkv"};
-    char val[7]={46, 48, 70, 82, 0, 0, 26};
-    int j;
-    FILE *fin, *fout;
-    char dst_file[255]={0};
+int XV_Convert(const char *src_file) {
+    int mn;
+    const char *ts = NULL;
+    const char *video_type[7] = {"rmvb", "wmv", "flv", "avi", "mp4", "mpg", "mkv"};
+    const char val[7] = {46, 48, 70, 82, 0, 0, 26};
 
-    fb = (char*)malloc(sizeof(char) * 0x200011);
-    c = 0;
+    char *fb = (char *) malloc(sizeof(char) * 0x200011);
 
-    fin = fopen(src_file, "rb");
-    if (fin==NULL) return -1;
+    FILE *fin = fopen(src_file, "rb");
+    if (fin == NULL) {
+        fprintf(stderr,"can not open file %s\n",src_file);
+        return -1;
+    }
+
+    //get size of file
     fseek(fin, 0, SEEK_END);
-    l = ftell(fin);
-    fseek(fin, 0, SEEK_SET);
-    fread(fb, 1, 0x200000, fin);
+    long l = ftell(fin);
+
+    fseek(fin,0,SEEK_SET);
+    fread(fb,1,0x200000,fin);
+    char peek[5];
     fread(peek, 1, 4, fin);
 
+    //check the real type of video
+    int type=0;
     mn = ('R'-peek[1] + 0x100) & 0xFF;
     if (((peek[2]+mn) & 0xFF) == 'M' && ((peek[3]+mn) & 0xFF ) == 'F') {
         type = 1;
@@ -63,68 +67,77 @@ int XV_Convert(char* src_file) {
         goto ok;
     }
 
-    strcpy(dst_file, src_file);
-    strcat(dst_file, ".new");
-    fout = fopen(dst_file, "wb");
-    if (fout==NULL) { fclose(fin); return -2; }
-    fwrite(fb, 0, 0x200000, fout);
-    fwrite(fb, 0, 4, fout);
-
-    fread(fb, 0, 0x100000, fin);
-    fwrite(fb, 0, 0x100000, fout);
-    fail += 1;
-    fclose(fin);
-    fclose(fout);
-    printf("convert failed\n");
-    free(fb);
-    return -1;
-
 ok:
-    ts = video_type[type-1];
+    //Unknown video type
+    if (type == 0) {
+        fclose(fin);
+        printf("convert failed: unknown video type.\n");
+        free(fb);
+        return -1;
+    }
+
+    ts = video_type[type - 1];
+
+
+    // open dest file, remove .xv, append real extension.
+    char dst_file[255] = {0};
     strcpy(dst_file, src_file);
+    size_t name_length = strlen(dst_file);
+    if (name_length > 2
+        && dst_file[name_length - 3] == '.'
+        && dst_file[name_length - 2] == 'x'
+        && dst_file[name_length - 1] == 'v') {
+        char *p = &dst_file[name_length - 1];
+        *p = '\0'; p--;
+        *p = '\0'; p--;
+        *p = '\0';
+    }
     strcat(dst_file, ".");
     strcat(dst_file, ts);
-    fout = fopen(dst_file, "wb");
-    peek[0] = val[type-1];
-    for (j=1; j<=3; j++) {
-        peek[j] = (peek[j]+mn) & 0xFF;
+    FILE *fout = fopen(dst_file, "wb");
+
+
+    peek[0] = val[type - 1];
+    for (int j = 1; j <= 3; j++) {
+        peek[j] = (peek[j] + mn) & 0xFF;
     }
     fwrite(peek, 1, 4, fout);
     fread(fb, 1, 0x3FC, fin);
-    for (j=1; j<=0x3FC; j++) {
-        fb[j-1] = (fb[j-1]+mn) & 0xFF;
+    for (int j = 1; j <= 0x3FC; j++) {
+        fb[j - 1] = (fb[j - 1] + mn) & 0xFF;
     }
     fwrite(fb, 1, 0x3FC, fout);
-    printf("go to ");
-    while (ftell(fin) <= l ) {
 
-        rl = fread(fb, 1, 0x40000, fin);
+    //write other
+    while (ftell(fin) <= l) {
+
+        size_t rl = fread(fb, 1, 0x40000, fin);
         if (rl == 0) break;;
         fwrite(fb, 1, rl, fout);
-        c = c + 1;
-        if (c == 10) {
-            double pos = ftell(fout);
-            pos = pos / (l-0x200000);
-            pos = pos * 100;
-            printf("%d ", (int)pos);
-            c = 0;
-        }
+
     }
-    printf("100\n");
+
     fclose(fin);
     fclose(fout);
     free(fb);
-    
+
     return 0;
 }
 
-int main(int argc, char *argv[])
-{
-    if (argc != 2) {
+int main(int argc, char *argv[]) {
+    if (argc < 2) {
         printf("usage: convert xunlei xv video format to other format.\n");
-        printf("    %s xv_filename\n", argv[0]);
+        printf("    %s xv_file1.xv xv_file1.xv ...\n", argv[0]);
         return 0;
     }
-
-    return XV_Convert(argv[1]);
+    int result;
+    printf("converting...\n");
+    for (int i = 1; i < argc; i++) {
+        if (result = XV_Convert(argv[i])) {
+            return result;
+        }
+    }
+    printf("converted %d files.\n",argc-1);
+    return 0;
 }
+
