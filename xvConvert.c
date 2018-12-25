@@ -127,7 +127,7 @@ ok:
 int main(int argc, char *argv[]) {
     if (argc < 2) {
         printf("usage: convert xunlei xv video format to other format.\n");
-        printf("    %s xv_file1.xv xv_file1.xv ...\n", argv[0]);
+        printf("    %s xv_file1.xv xv_file2.xv ...\n", argv[0]);
         return 0;
     }
     int result;
